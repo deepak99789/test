@@ -273,538 +273,216 @@ def check_legout_covered(it_is_demand_zone, stock_data, i, entry_index, total_ri
         return False
 
 
-def find_patterns(ticker, stock_data, interval_key, max_base_candles, scan_demand_zone_allowed, scan_supply_zone_allowed,reward_value,fresh_zone_allowed,target_zone_allowed,stoploss_zone_allowed,candle_behinde_legin_check_allowed , whitearea_check_allowed,legout_formation_check_allowed, wick_in_legin_allowed, time_validation_allowed,legin_tr_atr_check_allowed, one_legout_count_allowed,three_legout_count_allowed,legout_covered_check_allowed,htf_interval,user_input_zone_distance):
+def find_patterns(ticker, stock_data, interval_key, max_base_candles, 
+                  scan_demand_zone_allowed, scan_supply_zone_allowed,
+                  reward_value, fresh_zone_allowed, target_zone_allowed,
+                  stoploss_zone_allowed, candle_behinde_legin_check_allowed, 
+                  whitearea_check_allowed, legout_formation_check_allowed, 
+                  wick_in_legin_allowed, time_validation_allowed,
+                  legin_tr_check_allowed, one_legout_count_allowed,
+                  three_legout_count_allowed, legout_covered_check_allowed,
+                  htf_interval, user_input_zone_distance,
+                  tr_base_multiple=1, tr_legin_multiple=2, tr_legout_multiple=4):
+
+    """
+    Parameters:
+    - tr_base_multiple: multiplier for base candle TR (default 1)
+    - tr_legin_multiple: multiplier for legin candle TR relative to base (default 2)
+    - tr_legout_multiple: multiplier for legout candle TR relative to base (default 4)
+    """
     try:
         patterns = []
-        last_legout_high = []  # Initialize here to avoid error
-        last_legout_low = [ ] # Intiialize here to avoid error
-        
+
         if len(stock_data) < 3:
             print(f"Not enough stock_data for {ticker}")
             return []
 
         for i in range(len(stock_data) - 1, 2, -1):
-            if scan_demand_zone_allowed and (stock_data['Close'].iloc[i] > stock_data['Open'].iloc[i] and 
-                stock_data['TR'].iloc[i] > stock_data['ATR'].iloc[i]):
+
+            # ----------------- Demand Zone -----------------
+            if scan_demand_zone_allowed and stock_data['Close'].iloc[i] > stock_data['Open'].iloc[i]:
+                
+                # White area check
                 if whitearea_check_allowed:
                     white_area_condition = (stock_data['Open'].iloc[i] >= stock_data['Close'].iloc[i - 1] 
                                             if stock_data['Close'].iloc[i - 1] > stock_data['Open'].iloc[i - 1] 
                                             else stock_data['Open'].iloc[i] >= stock_data['Open'].iloc[i - 1])
                 else:
-                    white_area_condition = True  # If not allowed, treat as true
+                    white_area_condition = True
 
-                # Execute logic only if the white area condition is met
-                if white_area_condition:
-                   first_legout_open = stock_data['Open'].iloc[i] 
-                   first_legout_candle_body = abs(stock_data['Close'].iloc[i] - stock_data['Open'].iloc[i])
-                   first_legout_candle_range = (stock_data['High'].iloc[i] - stock_data['Low'].iloc[i])
+                if not white_area_condition:
+                    continue
 
-                   if first_legout_candle_body >= 0.5 * first_legout_candle_range:
-                       high_prices = []
-                       low_prices = []
-                       for base_candles_count in range(1, max_base_candles + 1):
-                           base_candles_found = 0
-                        
-                           legin_candle_index = i - (base_candles_count + 1)
-                           legin_candle_body = stock_data['Candle_Body'].iloc[legin_candle_index]
-                           legin_candle_range = stock_data['Candle_Range'].iloc[legin_candle_index]
-                        
-                           for k in range(1, base_candles_count + 1):
-                               if (stock_data['ATR'].iloc[i - k] > stock_data['TR'].iloc[i - k] and 
-                                   legin_candle_body >= 0.50 * legin_candle_range):
-                                
-                                   base_candles_found += 1
-                                   high_prices.append(stock_data['High'].iloc[i - k])
-                                   low_prices.append(stock_data['Low'].iloc[i - k])
-                                
-                               max_high_price = max(high_prices) if high_prices else None
-                               min_low_price = min(low_prices) if low_prices else None
-                            
-                               if  max_high_price is not None and min_low_price is not None:
-                                   actual_base_candle_range = max_high_price - min_low_price
-                               actual_legout_candle_range = None
-                               first_legout_candle_range_for_one_two_ka_four = (stock_data['High'].iloc[i] - stock_data['Close'].iloc[i-1])    
-                               condition_met = False  # Flag to check if any condition was met
-                               opposite_color_exist = ((stock_data['Close'].iloc[legin_candle_index] > stock_data['Open'].iloc[legin_candle_index] and 
-                                                stock_data['Close'].iloc[legin_candle_index - 1] < stock_data['Open'].iloc[legin_candle_index - 1]) or
-                                                (stock_data['Close'].iloc[legin_candle_index] < stock_data['Open'].iloc[legin_candle_index] and 
-                                                stock_data['Close'].iloc[legin_candle_index - 1] > stock_data['Open'].iloc[legin_candle_index - 1]))
+                first_legout_body = abs(stock_data['Close'].iloc[i] - stock_data['Open'].iloc[i])
+                first_legout_range = stock_data['High'].iloc[i] - stock_data['Low'].iloc[i]
 
-                               # Check for candle overlap if allowed
-                               if candle_behinde_legin_check_allowed and opposite_color_exist:
-                                    overlap_condition = is_overlap_less_than_50(stock_data, legin_candle_index)
-                               else:
-                                    overlap_condition = True  # If not allowed, treat as true
-                                   
-                               if legout_formation_check_allowed:
-                                   legout_formation_condition = (first_legout_open <= stock_data['Close'].iloc[legin_candle_index] + legin_candle_body)
-                               else:
-                                   legout_formation_condition = True
+                if first_legout_body < 0.8 * first_legout_range:
+                    continue
 
-                               if wick_in_legin_allowed:
-                                   wick_in_legin_condition = (stock_data['High'].iloc[legin_candle_index] > stock_data['Close'].iloc[legin_candle_index] and stock_data['Low'].iloc[legin_candle_index] < stock_data['Open'].iloc[legin_candle_index] )
-                               else:
-                                    wick_in_legin_condition = True 
-                               
-                               if time_validation_allowed:
-                                   time_validation_condition = validate_time_condition(stock_data.index[i], None ,interval_key)                               
-                               else :
-                                   time_validation_condition = True 
+                high_prices, low_prices = [], []
 
+                for base_candles_count in range(1, max_base_candles + 1):
+                    legin_idx = i - (base_candles_count + 1)
+                    if legin_idx < 0:
+                        break
 
-                               if legin_tr_atr_check_allowed:
-                                   legin_tr_atr_check_conditon =  (stock_data['TR'].iloc[legin_candle_index] > stock_data['ATR'].iloc[legin_candle_index])
-                               else:
-                                   legin_tr_atr_check_conditon = True
-                       
+                    legin_body = stock_data['Candle_Body'].iloc[legin_idx]
+                    legin_range = stock_data['Candle_Range'].iloc[legin_idx]
 
-                               if base_candles_found == base_candles_count:                                   
-                                   if not one_legout_count_allowed and not three_legout_count_allowed:
-                                      if ( 
-                                          legin_candle_range >= 1.5 * actual_base_candle_range and
-                                          first_legout_candle_range_for_one_two_ka_four >= 2 * legin_candle_range and 
-                                          stock_data['Low'].iloc[i] >= stock_data['Low'].iloc[legin_candle_index] and 
-                                       
-                                          overlap_condition and legout_formation_condition and wick_in_legin_allowed and time_validation_condition and legin_tr_atr_check_conditon):
-                                          condition_met = True  # Set flag if this condition is met
+                    if legin_body >= 0.8 * legin_range:
+                        high_prices.append(stock_data['High'].iloc[legin_idx])
+                        low_prices.append(stock_data['Low'].iloc[legin_idx])
 
-                                      else:  # This is the else part for the if statement above
-                                          last_legout_high = []
-                                          j = i + 1
-                                          while j in range(i + 1, min(i + 3, len(stock_data))) and stock_data['Close'].iloc[j] > stock_data['Open'].iloc[j]:
-                                           # Check if j == i + 1
-                                              if j == i + 1:
-                                                  if (stock_data['Open'].iloc[j] >= 0.10* stock_data['Close'].iloc[i] and 
-                                                      stock_data['Low'].iloc[j] >= 0.50 * stock_data['Candle_Range'].iloc[i]):
-                                                      last_legout_high.append(stock_data['High'].iloc[j])
-        
-                                              # Check if j == i + 2
-                                              elif j == i + 2:
-                                                  if stock_data['Low'].iloc[j] >= stock_data['Low'].iloc[i + 1]:
-                                                      last_legout_high.append(stock_data['High'].iloc[j])
-              
-                                              j += 1
+                        # ----------------- TR Multiple Conditions -----------------
+                        tr_base = stock_data['TR'].iloc[legin_idx] * tr_base_multiple
+                        legin_tr_condition = stock_data['TR'].iloc[legin_idx] >= tr_legin_multiple * tr_base
+                        legout_tr_condition = stock_data['TR'].iloc[i] >= tr_legout_multiple * tr_base
 
-                                          last_legout_high_value = max(last_legout_high) if last_legout_high else None
+                        if legin_tr_check_allowed and not (legin_tr_condition and legout_tr_condition):
+                            continue
 
-                                          if last_legout_high_value is not None:
-                                              actual_legout_candle_range = last_legout_high_value - stock_data['Close'].iloc[i - 1]
+                        # Other optional checks
+                        overlap_condition = is_overlap_less_than_50(stock_data, legin_idx) if candle_behinde_legin_check_allowed else True
+                        legout_formation_condition = (first_legout_body <= stock_data['Close'].iloc[legin_idx] + legin_body) if legout_formation_check_allowed else True
+                        wick_in_legin_condition = (stock_data['High'].iloc[legin_idx] > stock_data['Close'].iloc[legin_idx] and 
+                                                   stock_data['Low'].iloc[legin_idx] < stock_data['Open'].iloc[legin_idx]) if wick_in_legin_allowed else True
+                        time_validation_condition = validate_time_condition(stock_data.index[i], None, interval_key) if time_validation_allowed else True
 
-                                              if (legin_candle_range >= 1.5 * actual_base_candle_range and 
-                                                  actual_legout_candle_range >= 2 * legin_candle_range and
-                                                  stock_data['Low'].iloc[i] >= stock_data['Low'].iloc[legin_candle_index] and 
-                                                  overlap_condition and legout_formation_condition and wick_in_legin_allowed and time_validation_condition and legin_tr_atr_check_conditon):
-                      
-                                                  condition_met = True  # Set flag if this condition is met
-                                                      
-                                   else:
-                                       # If the one_legout_count_allowed checkbox is checked
-                                       if one_legout_count_allowed:
-                                           if (legin_candle_range >= 1.5 * actual_base_candle_range and
-                                               first_legout_candle_range_for_one_two_ka_four >= 2 * legin_candle_range and 
-                                               stock_data['Low'].iloc[i] >= stock_data['Low'].iloc[legin_candle_index] and 
-                                               overlap_condition and legout_formation_condition and 
-                                               wick_in_legin_allowed and time_validation_condition and 
-                                               legin_tr_atr_check_conditon):
-                                               condition_met = True  # Set flag if this condition is met
+                        condition_met = False
 
-                                       # If the three_legout_count_allowed checkbox is checked
-                                       if three_legout_count_allowed and not condition_met:
-                                           last_legout_high = []
-                                           j = i + 1
-                                           while j in range(i + 1, min(i + 3, len(stock_data))) and stock_data['Close'].iloc[j] > stock_data['Open'].iloc[j]:
-                                               # Check if j == i + 1
-                                               if j == i + 2:
-                                                   if (stock_data['Open'].iloc[i+1] >= 0.10 * stock_data['Close'].iloc[i] and 
-                                                       stock_data['Low'].iloc[i+1] >= 0.50 * stock_data['Candle_Range'].iloc[i] and
-                                                       stock_data['Low'].iloc[j] >= stock_data['Low'].iloc[i + 1] ):
-                                                       last_legout_high.append(stock_data['High'].iloc[j])
-                                               j += 1
-                                           last_legout_high_value = max(last_legout_high) if last_legout_high else None
- 
-                                           if last_legout_high_value is not None:
-                                               actual_legout_candle_range = last_legout_high_value - stock_data['Close'].iloc[i - 1]
- 
-                                               if (legin_candle_range >= 1.5 * actual_base_candle_range and 
-                                                   actual_legout_candle_range >= 2 * legin_candle_range and
-                                                   stock_data['Low'].iloc[i] >= stock_data['Low'].iloc[legin_candle_index] and 
-                                                   overlap_condition and legout_formation_condition and wick_in_legin_allowed and time_validation_condition and legin_tr_atr_check_conditon):
-                       
-                                                   condition_met = True  # Set flag if this condition is met                               
-                             
-                               if condition_met:
-                                   if interval_key in ('1 Day','1 Week','1 Month'):
-                                       legin_date = stock_data.index[legin_candle_index].strftime('%Y-%m-%d')
-                                       legout_date = stock_data.index[i].strftime('%Y-%m-%d')
-                                   else:
-                                       legin_date = stock_data.index[legin_candle_index].strftime('%Y-%m-%d %H:%M:%S')
-                                       legout_date = stock_data.index[i].strftime('%Y-%m-%d %H:%M:%S')
-                                
-                                   if actual_legout_candle_range is not None:
-                                       legout_candle_range = actual_legout_candle_range
-                                   else:
-                                       legout_candle_range = first_legout_candle_range_for_one_two_ka_four
+                        # ONE LEGOUT
+                        if one_legout_count_allowed:
+                            if overlap_condition and legout_formation_condition and wick_in_legin_condition and time_validation_condition:
+                                condition_met = True
 
+                        # THREE LEGOUTS
+                        if three_legout_count_allowed and not condition_met:
+                            last_legout_high = []
+                            for j in range(i+1, min(i+4, len(stock_data))):
+                                if j == i+1 and stock_data['Close'].iloc[j] > stock_data['Open'].iloc[j]:
+                                    last_legout_high.append(stock_data['High'].iloc[j])
+                                if j == i+2 and stock_data['Close'].iloc[j] > stock_data['Open'].iloc[j]:
+                                    last_legout_high.append(stock_data['High'].iloc[j])
+                            last_legout_value = max(last_legout_high) if last_legout_high else None
+                            if last_legout_value:
+                                actual_legout_range = last_legout_value - stock_data['Close'].iloc[legin_idx]
+                                if actual_legout_range >= 2 * legin_body:
+                                    condition_met = True
 
-                                   entry_occurred = False
-                                   target_hit = False
-                                   stop_loss_hit = False
-                                   entry_date = None
-                                   entry_index = None
-                                   exit_date = None
-                                   exit_index = None
-                                   Zone_status = None
-                                   total_risk = max_high_price - min_low_price
-                                   minimum_target = (total_risk * reward_value) + max_high_price                  
-                                   start_index = j+1 if last_legout_high else i + 1
+                        if condition_met:
+                            legin_date = stock_data.index[legin_idx].strftime('%Y-%m-%d %H:%M:%S') if interval_key not in ('1 Day','1 Week','1 Month') else stock_data.index[legin_idx].strftime('%Y-%m-%d')
+                            legout_date = stock_data.index[i].strftime('%Y-%m-%d %H:%M:%S') if interval_key not in ('1 Day','1 Week','1 Month') else stock_data.index[i].strftime('%Y-%m-%d')
 
+                            max_high = max(high_prices)
+                            min_low = min(low_prices)
+                            total_risk = max_high - min_low
+                            minimum_target = max_high + total_risk * reward_value
+                            latest_close = stock_data['Close'].iloc[-1]
+                            zone_distance = (latest_close - max_high) / max_high * 100
+                            legout_covered_condition = check_legout_covered(True, stock_data, i, i, total_risk, reward_value, first_legout_body, max_high) if legout_covered_check_allowed else True
 
-                                   for m in range(start_index, len(stock_data)):
-                                       if not entry_occurred:
-                                           # Check if the entry condition is met
-                                           if stock_data['Low'].iloc[m] <= max_high_price:
-                                               entry_occurred = True
-                                               entry_index = m
-                                               entry_date = stock_data.index[m]
-   
-                                               # Check if the low and high of the current candle exceed the limits
-                                               if stock_data['Low'].iloc[m] < min_low_price:
-                                                   stop_loss_hit = True
-                                                   exit_index = m
-                                                   exit_date = stock_data.index[m]
-                                                   Zone_status = 'Stop loss'
-                                                   break  # Exit the loop after stop-loss is hit
-                                               elif stock_data['High'].iloc[m] >= minimum_target:
-                                                   target_hit = True
-                                                   exit_index = m
-                                                   exit_date = stock_data.index[m]
-                                                   Zone_status = 'Target'
-                                                   break  # Exit the loop after target is hit
-                                           elif min(stock_data['Low'].iloc[start_index:]) > max_high_price:
-                                                Zone_status = 'Fresh'
-                                       
-                                       else:
-                                           # After entry, check if price hits stop-loss or minimum target
-                                           if stock_data['Low'].iloc[m] < min_low_price:
-                                               stop_loss_hit = True
-                                               exit_index = m
-                                               exit_date = stock_data.index[m]
-                                               Zone_status = 'Stop loss'
-                                               break  # Exit the loop after stop-loss is hit
-                                           elif stock_data['High'].iloc[m] >= minimum_target:
-                                               target_hit = True
-                                               exit_index = m
-                                               exit_date = stock_data.index[m]
-                                               Zone_status = 'Target'
-                                               break  # Exit the loop after target is hit
-                                   if  legout_covered_check_allowed :
-                                       it_is_demand_zone = True
-                                       legout_covered_check_condition = check_legout_covered(it_is_demand_zone, stock_data, i, entry_index, total_risk, reward_value, first_legout_candle_range, max_high_price)       
-                                   else:
-                                       legout_covered_check_condition = True
-                                       
-                                   if time_validation_allowed and entry_date is not None:
-                                       time_validation_condition = validate_time_condition(stock_data.index[i], entry_date, interval_key)
-                                   else :
-                                       time_validation_condition = True                                 
-                                   # time_in_exit = exit_index - entry_index                                
-                                   latest_closing_price = round(stock_data['Close'].iloc[-1], 2)
-                                   zone_distance = (math.floor(latest_closing_price) - max(high_prices)) / max(high_prices) * 100
-                                                                   
-                                   if ((fresh_zone_allowed and Zone_status == 'Fresh') or \
-                                      (target_zone_allowed and Zone_status == 'Target') or \
-                                      (stoploss_zone_allowed and Zone_status == 'Stop loss')) and time_validation_condition and legout_covered_check_condition and zone_distance <= user_input_zone_distance:
-                                      
-                                      Pattern_name_is = 'DZ(DBR)' if stock_data['Open'].iloc[legin_candle_index] > stock_data['Close'].iloc[legin_candle_index] else 'DZ(RBR)'
-                                      legin_base_legout_ranges = f"{round(legin_candle_range)}:{round(actual_base_candle_range)}:{round(legout_candle_range)}"
-                                      ohlc_data = capture_ohlc_data(stock_data, exit_index, i)                                   
-                                      pulse_check_start_date = pd.Timestamp(entry_date) if entry_date is not None else pd.Timestamp.now()
-                                      #pulse_details,trend_label = check_golden_crossover(stock_data_htf, pulse_check_start_date)       
-                                          
-                                      patterns.append({
-                                           'Symbol': ticker, 
-                                           'Time_frame': interval_key,
-                                           'Pulse_details': " ", 
-                                           'Trend': " ",
-                                           'Zone_status':Zone_status,
-                                           'Zone_Type' : Pattern_name_is,
-                                           'Entry_Price':max_high_price,
-                                           'Stop_loss': min_low_price,
-                                           'Target': minimum_target,
-                                           'Entry_date':entry_date,
-                                           'Exit_date':exit_date,
-                                           'Exit_index' :exit_index ,  
-                                           'Entry_index' :entry_index ,  
-                                           'Zone_Distance': zone_distance.round(2),
-                                           'legin_date': legin_date,
-                                           'base_count': base_candles_found,
-                                           'legout_date': legout_date,
-                                           'legin:base:legout_ranges': legin_base_legout_ranges,
-                                           'OHLC_Data': ohlc_data,
-                                           'Close_price': latest_closing_price
-                                       })
+                            if zone_distance <= user_input_zone_distance and legout_covered_condition:
+                                patterns.append({
+                                    'Symbol': ticker,
+                                    'Time_frame': interval_key,
+                                    'Zone_Type': 'DZ(DBR)' if stock_data['Open'].iloc[legin_idx] > stock_data['Close'].iloc[legin_idx] else 'DZ(RBR)',
+                                    'Entry_Price': max_high,
+                                    'Stop_loss': min_low,
+                                    'Target': minimum_target,
+                                    'Entry_date': stock_data.index[i],
+                                    'legin_date': legin_date,
+                                    'legout_date': legout_date,
+                                    'Close_price': latest_close
+                                })
 
-            if scan_supply_zone_allowed and (stock_data['Open'].iloc[i] > stock_data['Close'].iloc[i] and 
-                                              stock_data['TR'].iloc[i] > stock_data['ATR'].iloc[i]):
+            # ----------------- Supply Zone -----------------
+            if scan_supply_zone_allowed and stock_data['Open'].iloc[i] > stock_data['Close'].iloc[i]:
 
-                # Check for white area condition if allowed
                 if whitearea_check_allowed:
                     white_area_condition_supply = (stock_data['Open'].iloc[i] <= stock_data['Close'].iloc[i - 1] 
-                                                    if stock_data['Close'].iloc[i - 1] < stock_data['Open'].iloc[i - 1] 
-                                                    else stock_data['Open'].iloc[i] <= stock_data['Open'].iloc[i - 1])
+                                                   if stock_data['Close'].iloc[i - 1] < stock_data['Open'].iloc[i - 1] 
+                                                   else stock_data['Open'].iloc[i] <= stock_data['Open'].iloc[i - 1])
                 else:
-                    white_area_condition_supply = True  # If not allowed, treat as true
+                    white_area_condition_supply = True
 
-                if white_area_condition_supply:
-                    first_legout_open = stock_data['Open'].iloc[i]
-                    first_legout_candle_body = abs(stock_data['Close'].iloc[i] - stock_data['Open'].iloc[i])
-                    first_legout_candle_range = (stock_data['High'].iloc[i] - stock_data['Low'].iloc[i])
-                    
-                    if first_legout_candle_body >= 0.5 * first_legout_candle_range:
-                        high_prices = []
-                        low_prices = []
-                        for base_candles_count in range(1, max_base_candles + 1):
-                            base_candles_found = 0
-                        
-                            legin_candle_index = i - (base_candles_count + 1)
-                            legin_candle_body = stock_data['Candle_Body'].iloc[legin_candle_index]
-                            legin_candle_range = stock_data['Candle_Range'].iloc[legin_candle_index]
-                            
-                            for k in range(1, base_candles_count + 1):
-                                if (stock_data['ATR'].iloc[i - k] > stock_data['TR'].iloc[i - k] and 
-                                    legin_candle_body >= 0.50 * legin_candle_range):
-                                
-                                    base_candles_found += 1
-                                    high_prices.append(stock_data['High'].iloc[i - k])
-                                    low_prices.append(stock_data['Low'].iloc[i - k])
-                                
-                                max_high_price = max(high_prices) if high_prices else None
-                                min_low_price = min(low_prices) if low_prices else None
-                            
-                                if max_high_price is not None and min_low_price is not None:
-                                    actual_base_candle_range = max_high_price - min_low_price
-                                actual_legout_candle_range = None
-                                first_legout_candle_range_for_one_two_ka_four = (stock_data['Close'].iloc[i-1] - stock_data['Low'].iloc[i])    
-                                condition_met = False  # Flag to check if any condition was met
+                if not white_area_condition_supply:
+                    continue
 
-                                opposite_color_exist = ((stock_data['Close'].iloc[legin_candle_index] > stock_data['Open'].iloc[legin_candle_index] and 
-                                                stock_data['Close'].iloc[legin_candle_index - 1] < stock_data['Open'].iloc[legin_candle_index - 1]) or
-                                                (stock_data['Close'].iloc[legin_candle_index] < stock_data['Open'].iloc[legin_candle_index] and 
-                                                stock_data['Close'].iloc[legin_candle_index - 1] > stock_data['Open'].iloc[legin_candle_index - 1]))
-                                
-                                if candle_behinde_legin_check_allowed and opposite_color_exist:
-                                    overlap_condition = is_overlap_less_than_50(stock_data, legin_candle_index)
-                                else:
-                                    overlap_condition = True  # If not allowed, treat as true
+                first_legout_body = abs(stock_data['Close'].iloc[i] - stock_data['Open'].iloc[i])
+                first_legout_range = stock_data['High'].iloc[i] - stock_data['Low'].iloc[i]
 
-                                if legout_formation_check_allowed:
-                                   legout_formation_condition = (first_legout_open >= stock_data['Close'].iloc[legin_candle_index] - legin_candle_body)
-                                else:
-                                   legout_formation_condition = True  
-                                   
-                                if wick_in_legin_allowed:
-                                   wick_in_legin_condition = (stock_data['High'].iloc[legin_candle_index] > stock_data['Open'].iloc[legin_candle_index] and stock_data['Low'].iloc[legin_candle_index] < stock_data['Close'].iloc[legin_candle_index])
-                                else :
-                                   wick_in_legin_allowed = True 
-                                if time_validation_allowed:
-                                   time_validation_condition = validate_time_condition(stock_data.index[i], None, interval_key)
-                               
-                                else :
-                                   time_validation_condition = True 
-                                if legin_tr_atr_check_allowed:
-                                   legin_tr_atr_check_conditon =  (stock_data['TR'].iloc[legin_candle_index] > stock_data['ATR'].iloc[legin_candle_index])
-                                else:
-                                   legin_tr_atr_check_conditon = True
-                                   
-                                if base_candles_found == base_candles_count:
-                                   if not one_legout_count_allowed and not three_legout_count_allowed:
-                                    
-                                     if (legin_candle_range >= 1.5 * actual_base_candle_range and
-                                        first_legout_candle_range_for_one_two_ka_four >= 2 * legin_candle_range and 
-                                    
-                                        stock_data['High'].iloc[i] <= stock_data['High'].iloc[legin_candle_index] and
-                                        overlap_condition and legout_formation_condition and wick_in_legin_allowed and time_validation_allowed and legin_tr_atr_check_conditon):
-                                        
-                                        condition_met = True  # Set flag if this condition is met
-                                     else:  # This is the else part for the if statement above
-                                        last_legout_low = []
-                                        j = i + 1
-                                        while j in range(i + 1, min(i + 3, len(stock_data))) and stock_data['Open'].iloc[j] > stock_data['Close'].iloc[j]:
-                                            # Check if j == i + 1
-                                            if j == i + 1:
-                                                if (stock_data['Open'].iloc[j] <= 0.10* stock_data['Close'].iloc[i] and 
-                                                    stock_data['High'].iloc[j] <= 0.50 * stock_data['Candle_Range'].iloc[i]):
-                                                    last_legout_low.append(stock_data['Low'].iloc[j])
-            
-                                                # Check if j == i + 2
-                                                elif j == i + 2:
-                                                    if stock_data['High'].iloc[j] <= stock_data['High'].iloc[i + 1]:
-                                                        last_legout_low.append(stock_data['Low'].iloc[j])
-            
-                                            j += 1
+                if first_legout_body < 0.8 * first_legout_range:
+                    continue
 
-                                        last_legout_low_value = min(last_legout_low) if last_legout_low else None
+                high_prices, low_prices = [], []
 
-                                        if last_legout_low_value is not None:
-                                            actual_legout_candle_range = abs(last_legout_low_value - stock_data['Close'].iloc[i - 1])
+                for base_candles_count in range(1, max_base_candles + 1):
+                    legin_idx = i - (base_candles_count + 1)
+                    if legin_idx < 0:
+                        break
 
-                                            if (legin_candle_range >= 1.5 * actual_base_candle_range and 
-                                                actual_legout_candle_range >= 2 * legin_candle_range and
-                                                stock_data['High'].iloc[i] <= stock_data['High'].iloc[legin_candle_index] and 
-                                                overlap_condition and legout_formation_condition and wick_in_legin_allowed and time_validation_allowed and legin_tr_atr_check_conditon ):
-                
-                                                condition_met = True  # Set flag if this condition is met
-                                   else:
-                                       # If the one_legout_count_allowed checkbox is checked
-                                       if one_legout_count_allowed:
-                                          if (legin_candle_range >= 1.5 * actual_base_candle_range and
-                                             first_legout_candle_range_for_one_two_ka_four >= 2 * legin_candle_range and 
-                                    
-                                             stock_data['High'].iloc[i] <= stock_data['High'].iloc[legin_candle_index] and
-                                             overlap_condition and legout_formation_condition and wick_in_legin_allowed and time_validation_allowed and legin_tr_atr_check_conditon):
-                                        
-                                             condition_met = True  # Set flag if this condition is met
+                    legin_body = stock_data['Candle_Body'].iloc[legin_idx]
+                    legin_range = stock_data['Candle_Range'].iloc[legin_idx]
 
-                                       
-                                       if three_legout_count_allowed and not condition_met :
-                                           last_legout_low = []
-                                           j = i + 1
-                                           while j in range(i + 1, min(i + 3, len(stock_data))) and stock_data['Open'].iloc[j] > stock_data['Close'].iloc[j]:
-                                               # Check if j == i + 1
-                                               if j == i + 2:
-                                                   if (stock_data['Open'].iloc[j] <= 0.10* stock_data['Close'].iloc[i] and 
-                                                       stock_data['High'].iloc[j] <= 0.50 * stock_data['Candle_Range'].iloc[i] and 
-                                                       stock_data['High'].iloc[j] <= stock_data['High'].iloc[i + 1]) :
-                                                       last_legout_low.append(stock_data['Low'].iloc[j])
-            
-                                               j += 1
+                    if legin_body >= 0.8 * legin_range:
+                        high_prices.append(stock_data['High'].iloc[legin_idx])
+                        low_prices.append(stock_data['Low'].iloc[legin_idx])
 
-                                           last_legout_low_value = min(last_legout_low) if last_legout_low else None
+                        # TR multiples
+                        tr_base = stock_data['TR'].iloc[legin_idx] * tr_base_multiple
+                        legin_tr_condition = stock_data['TR'].iloc[legin_idx] >= tr_legin_multiple * tr_base
+                        legout_tr_condition = stock_data['TR'].iloc[i] >= tr_legout_multiple * tr_base
 
-                                           if last_legout_low_value is not None:
-                                               actual_legout_candle_range = abs(last_legout_low_value - stock_data['Close'].iloc[i - 1])
-                                               if (legin_candle_range >= 1.5 * actual_base_candle_range and 
-                                                   actual_legout_candle_range >= 2 * legin_candle_range and
-                                                   stock_data['High'].iloc[i] <= stock_data['High'].iloc[legin_candle_index] and 
-                                                   overlap_condition and legout_formation_condition and wick_in_legin_allowed and time_validation_allowed and legin_tr_atr_check_conditon ):
-                
-                                                   condition_met = True  # Set flag if this condition is met
-                                           
-                                # Code block to execute if any condition was met
-                                if condition_met:
-                                    if interval_key in ('1 Day','1 Week','1 Month') :
-                                        legin_date = stock_data.index[legin_candle_index].strftime('%Y-%m-%d')
-                                        legout_date = stock_data.index[i].strftime('%Y-%m-%d')
-                                    else:
-                                        legin_date = stock_data.index[legin_candle_index].strftime('%Y-%m-%d %H:%M:%S')
-                                        legout_date = stock_data.index[i].strftime('%Y-%m-%d %H:%M:%S')
-                                
-                                    if actual_legout_candle_range is not None:
-                                        legout_candle_range = actual_legout_candle_range
-                                    else:
-                                        legout_candle_range = first_legout_candle_range_for_one_two_ka_four
+                        if legin_tr_check_allowed and not (legin_tr_condition and legout_tr_condition):
+                            continue
 
-                                    entry_occurred = False
-                                    target_hit = False
-                                    stop_loss_hit = False
-                                    entry_date = None
-                                    entry_index = None
-                                    exit_date = None
-                                    exit_index = None
-                                    Zone_status = None
-                                    total_risk = max_high_price - min_low_price
-                                    minimum_target = min_low_price - (total_risk * reward_value)                   
-                                    start_index = j+1 if last_legout_low else i + 1
+                        condition_met = False
+                        if one_legout_count_allowed:
+                            condition_met = True
 
-                                    for m in range(start_index, len(stock_data)):
-                                        if not entry_occurred:
-                                            # Check if the entry condition is met
-                                            if stock_data['High'].iloc[m] >= min_low_price:
-                                                entry_occurred = True
-                                                entry_index = m
-                                                entry_date = stock_data.index[m]
+                        if three_legout_count_allowed and not condition_met:
+                            last_legout_low = []
+                            for j in range(i+1, min(i+4, len(stock_data))):
+                                if j == i+2 and stock_data['Close'].iloc[j] < stock_data['Open'].iloc[j]:
+                                    last_legout_low.append(stock_data['Low'].iloc[j])
+                            last_legout_value = min(last_legout_low) if last_legout_low else None
+                            if last_legout_value:
+                                actual_legout_range = abs(last_legout_value - stock_data['Close'].iloc[legin_idx])
+                                if actual_legout_range >= 2 * legin_body:
+                                    condition_met = True
 
-                                                # Check if the low and high of the current candle exceed the limits
-                                                if stock_data['High'].iloc[m] > max_high_price:
-                                                    stop_loss_hit = True
-                                                    exit_index = m
-                                                    exit_date = stock_data.index[m]
-                                                    Zone_status = 'Stop loss'
-                                                    break  # Exit the loop after stop-loss is hit
-                                                elif stock_data['Low'].iloc[m] <= minimum_target:
-                                                    target_hit = True
-                                                    exit_index = m
-                                                    exit_date = stock_data.index[m]
-                                                    Zone_status = 'Target'
-                                                    break  # Exit the loop after target is hit
-                                            elif max(stock_data['High'].iloc[start_index:]) < min_low_price:
-                                                 Zone_status = 'Fresh'
-                                        else:
-                                            # After entry, check if price hits stop-loss or minimum target
-                                            if stock_data['High'].iloc[m] > max_high_price:
-                                                stop_loss_hit = True
-                                                exit_index = m
-                                                exit_date = stock_data.index[m]
-                                                Zone_status = 'Stop loss'
-                                                break  # Exit the loop after stop-loss is hit
-                                            elif stock_data['Low'].iloc[m] <= minimum_target:
-                                                target_hit = True
-                                                exit_index = m
-                                                exit_date = stock_data.index[m]
-                                                Zone_status = 'Target'
-                                                break  # Exit the loop after target is hit
-                                    if  legout_covered_check_allowed :
-                                        it_is_demand_zone = False
-                                        legout_covered_check_condition = check_legout_covered(it_is_demand_zone, stock_data, i, entry_index, total_risk, reward_value, first_legout_candle_range, min_low_price)       
-                                    else:
-                                        legout_covered_check_condition = True
-                                    
-                                    if time_validation_allowed and entry_date is not None:
-                                       time_validation_condition = validate_time_condition(stock_data.index[i], entry_date, interval_key)
-                                    else :
-                                       time_validation_condition = True     
-                                    latest_closing_price = round(stock_data['Close'].iloc[-1], 2)
-                                    zone_distance = (min(low_prices) - math.floor(latest_closing_price)) / min(low_prices) * 100
-                                                                    
-                                    if ((fresh_zone_allowed and Zone_status == 'Fresh') or \
-                                       (target_zone_allowed and Zone_status == 'Target') or \
-                                       (stoploss_zone_allowed and Zone_status == 'Stop loss')) and time_validation_condition and legout_covered_check_condition and zone_distance <= user_input_zone_distance:
-                                           
-                                       Pattern_name_is = 'SZ(RBD)' if stock_data['Close'].iloc[legin_candle_index] > stock_data['Open'].iloc[legin_candle_index] else 'SZ(DBD)'
-                                       legin_base_legout_ranges = f"{round(legin_candle_range, 2)}:{round(actual_base_candle_range, 2)}:{round(legout_candle_range, 2)}"
-                                    
-                                       ohlc_data = capture_ohlc_data(stock_data, exit_index, i)
-                                    
-                                       pulse_check_start_date = pd.Timestamp(entry_date) if entry_date is not None else pd.Timestamp.now()
-                                       #pulse_details,trend_label = check_golden_crossover(stock_data_htf, pulse_check_start_date)
-                                           
-                                       patterns.append({
-                                            'Symbol': ticker, 
-                                            'Time_frame':interval_key,                                       
-                                            'Pulse_details': " ", 
-                                            'Trend':" ",                                       
-                                            'Zone_status':Zone_status,
-                                            'Zone_Type' : Pattern_name_is,
-                                            'Entry_Price':max_high_price,
-                                            'Stop_loss': min_low_price,
-                                            'Target': minimum_target,
-                                            'Entry_date':entry_date,
-                                            'Exit_date':exit_date,
-                                            'Exit_index' :exit_index ,  
-                                            'Entry_index' :entry_index ,                                                                            
-                                            'Zone_Distance': zone_distance.round(2),
-                                            'legin_date': legin_date,
-                                            'base_count': base_candles_found,
-                                            'legout_date': legout_date,
-                                            'legin:base:legout_ranges': legin_base_legout_ranges,
-                                            'OHLC_Data': ohlc_data,
-                                            'Close_price': latest_closing_price
-                                        })
-                              
+                        if condition_met:
+                            legin_date = stock_data.index[legin_idx].strftime('%Y-%m-%d %H:%M:%S') if interval_key not in ('1 Day','1 Week','1 Month') else stock_data.index[legin_idx].strftime('%Y-%m-%d')
+                            legout_date = stock_data.index[i].strftime('%Y-%m-%d %H:%M:%S') if interval_key not in ('1 Day','1 Week','1 Month') else stock_data.index[i].strftime('%Y-%m-%d')
+
+                            max_high = max(high_prices)
+                            min_low = min(low_prices)
+                            total_risk = max_high - min_low
+                            minimum_target = min_low - total_risk * reward_value
+                            latest_close = stock_data['Close'].iloc[-1]
+                            zone_distance = (min_low - latest_close) / min_low * 100
+                            legout_covered_condition = check_legout_covered(False, stock_data, i, i, total_risk, reward_value, first_legout_body, min_low) if legout_covered_check_allowed else True
+
+                            if zone_distance <= user_input_zone_distance and legout_covered_condition:
+                                patterns.append({
+                                    'Symbol': ticker,
+                                    'Time_frame': interval_key,
+                                    'Zone_Type': 'SZ(RBD)' if stock_data['Close'].iloc[legin_idx] > stock_data['Open'].iloc[legin_idx] else 'SZ(DBD)',
+                                    'Entry_Price': min_low,
+                                    'Stop_loss': max_high,
+                                    'Target': minimum_target,
+                                    'Entry_date': stock_data.index[i],
+                                    'legin_date': legin_date,
+                                    'legout_date': legout_date,
+                                    'Close_price': latest_close
+                                })
+
         return patterns
+
     except Exception as e:
         print(f"Error processing {ticker}: {e}")
         return []
+
 
 
 # Initialize TvDatafeed with your TradingView credentials
